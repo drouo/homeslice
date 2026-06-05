@@ -1,0 +1,7 @@
+{
+  "name": "Homeslice",
+  "description": "Local development project dashboard",
+  "tech": "Node.js + vanilla JS",
+  "section": "desktop",
+  "url": "http://homeslice.localhost"
+}
