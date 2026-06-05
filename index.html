@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Homeslice</title>
+<style>
+  :root {
+    --bg: #111;
+    --surface: #1a1a2e;
+    --card: #16213e;
+    --accent: #0f3460;
+    --text: #e0e0e0;
+    --muted: #888;
+    --green: #53d769;
+    --blue: #4fc3f7;
+    --gh: #333;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 2rem;
+  }
+  .container { max-width: 900px; margin: 0 auto; }
+  header { margin-bottom: 2.5rem; }
+  header h1 {
+    font-size: 2.5rem;
+    font-weight: 700;
+    background: linear-gradient(135deg, var(--green), var(--blue));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  header p { color: var(--muted); margin-top: 0.25rem; font-size: 1rem; }
+  .section-title {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+    margin-bottom: 0.75rem;
+    margin-top: 1.5rem;
+  }
+  .project {
+    background: var(--card);
+    border: 1px solid #222;
+    border-radius: 8px;
+    padding: 1rem 1.25rem;
+    margin-bottom: 0.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    transition: border-color 0.2s;
+  }
+  .project:hover { border-color: var(--accent); }
+  .project .top-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+  .project .info { flex: 1; min-width: 0; }
+  .project .name {
+    font-size: 1rem;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .project .name .badge {
+    font-size: 0.65rem;
+    font-weight: 500;
+    padding: 0.15em 0.5em;
+    border-radius: 4px;
+    background: var(--accent);
+    color: var(--blue);
+  }
+  .project .desc {
+    font-size: 0.8rem;
+    color: var(--muted);
+    margin-top: 0.15rem;
+  }
+  .project .links {
+    display: flex;
+    gap: 0.5rem;
+    flex-shrink: 0;
+  }
+  .project .links a {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.35rem 0.75rem;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    font-weight: 500;
+    text-decoration: none;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+  .link-open {
+    background: var(--green);
+    color: #000;
+  }
+  .link-open:hover { filter: brightness(1.1); }
+  .link-dir, .link-term, .link-cmd {
+    cursor: pointer;
+    border: none;
+    font-family: inherit;
+    font-size: 0.8rem;
+    font-weight: 500;
+    padding: 0.35rem 0.75rem;
+    border-radius: 6px;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+  .link-dir { background: #222; color: var(--text); }
+  .link-dir:hover { background: #333; }
+  .link-term { background: #2d2d5e; color: var(--text); }
+  .link-term:hover { background: #3d3d7e; }
+  .link-cmd { background: #5e2d2d; color: var(--text); }
+  .link-cmd:hover { background: #7e3d3d; }
+  .link-cmd-active { background: #7e3d3d; }
+  .link-gh {
+    background: var(--gh);
+    color: var(--text);
+  }
+  .link-gh:hover { background: #444; }
+
+  .cmd-panel { border-top: 1px solid #222; padding-top: 0.75rem; }
+  .cmd-panel[hidden] { display: none; }
+  .cmd-row {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+  }
+  .cmd-row select,
+  .cmd-row input {
+    background: #222;
+    color: var(--text);
+    border: 1px solid #333;
+    border-radius: 4px;
+    padding: 0.35rem 0.5rem;
+    font-size: 0.8rem;
+    font-family: monospace;
+  }
+  .cmd-row select { flex: 0 0 auto; min-width: 150px; }
+  .cmd-row input { flex: 1; min-width: 0; }
+  .cmd-row button {
+    background: var(--accent);
+    color: var(--blue);
+    border: none;
+    border-radius: 4px;
+    padding: 0.35rem 0.75rem;
+    font-size: 0.8rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+  .cmd-row button:hover { filter: brightness(1.2); }
+  .cmd-row button:disabled { opacity: 0.5; cursor: not-allowed; }
+  .cmd-output {
+    margin-top: 0.5rem;
+    background: #0a0a0a;
+    border: 1px solid #222;
+    border-radius: 4px;
+    padding: 0.5rem;
+    font-size: 0.75rem;
+    font-family: monospace;
+    white-space: pre-wrap;
+    word-break: break-all;
+    max-height: 300px;
+    overflow-y: auto;
+    color: #ccc;
+  }
+  .cmd-output[hidden] { display: none; }
+
+  footer {
+    margin-top: 3rem;
+    text-align: center;
+    font-size: 0.75rem;
+    color: var(--muted);
+  }
+  .dot {
+    display: inline-block;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .dot-green { background: var(--green); }
+  .dot-red   { background: #e74c3c; }
+  @media (max-width: 600px) {
+    body { padding: 1rem; }
+    .project .top-row { flex-direction: column; align-items: flex-start; }
+    .project .links { width: 100%; flex-wrap: wrap; }
+    .project .links a, .project .links button { flex: 1; justify-content: center; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>Homeslice</h1>
+    <p>Local development projects</p>
+  </header>
+
+  <div id="projects"><div class="section-title">Loading…</div></div>
+
+  <footer>
+    <span id="caddy-status"><span class="dot dot-red"></span> Caddy not running</span>
+    <span style="margin:0 0.5rem">|</span>
+    <span id="helper-status"><span class="dot dot-red"></span> Helper not running</span>
+  </footer>
+</div>
+
+<script>
+const SECTION_LABELS = {
+  web:     'Web Apps (behind Caddy)',
+  desktop: 'Desktop Apps',
+  docs:    'Docs & Planning',
+};
+
+const CMD_PRESETS = [
+  { label: 'git status',    cmd: 'git status' },
+  { label: 'git pull',      cmd: 'git pull' },
+  { label: 'git fetch --all', cmd: 'git fetch --all' },
+  { label: 'git log --oneline -5', cmd: 'git log --oneline -5' },
+  { label: '(custom)',      cmd: '' },
+];
+
+function slug(name) {
+  return name.toLowerCase().replace(/\s+/g, '-');
+}
+
+function openDir(path) {
+  new Image().src = '/open-dir?path=' + encodeURIComponent(path);
+}
+
+function openTerm(path) {
+  new Image().src = '/open-term?path=' + encodeURIComponent(path);
+}
+
+function toggleCmd(slug) {
+  const panel = document.getElementById('cmd-panel-' + slug);
+  const btn = document.getElementById('cmd-btn-' + slug);
+  if (panel.hasAttribute('hidden')) {
+    panel.removeAttribute('hidden');
+    btn.classList.add('link-cmd-active');
+  } else {
+    panel.setAttribute('hidden', '');
+    btn.classList.remove('link-cmd-active');
+  }
+}
+
+function runCmd(slug, dir) {
+  const output = document.getElementById('cmd-output-' + slug);
+  const select = document.getElementById('cmd-preset-' + slug);
+  const input = document.getElementById('cmd-input-' + slug);
+  const runBtn = document.getElementById('cmd-run-' + slug);
+  const cmd = select.value === '' ? input.value.trim() : select.value;
+  if (!cmd) return;
+
+  runBtn.disabled = true;
+  runBtn.textContent = 'Running...';
+  output.removeAttribute('hidden');
+  output.textContent = '$ ' + cmd + '\n';
+
+  fetch('/run', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ dir, cmd }),
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.error) {
+      output.textContent += data.error + '\n';
+    } else {
+      if (data.stdout) output.textContent += data.stdout;
+      if (data.stderr) output.textContent += (data.stdout ? '\n' : '') + data.stderr;
+      if (data.timedOut) output.textContent += '\nCommand timed out';
+      if (data.exitCode !== 0 && !data.timedOut) output.textContent += '\nExit code: ' + data.exitCode;
+    }
+    output.scrollTop = output.scrollHeight;
+  })
+  .catch(err => {
+    output.textContent += 'Network error: ' + err.message + '\n';
+  })
+  .finally(() => {
+    runBtn.disabled = false;
+    runBtn.textContent = 'Run';
+  });
+}
+
+function renderCard(p) {
+  const dotHtml   = p.port
+    ? '<span class="dot dot-red" id="status-' + slug(p.name) + '"></span>'
+    : '';
+  const badgeHtml = p.tech
+    ? '<span class="badge">' + p.tech + '</span>'
+    : '';
+  const descHtml  = p.description
+    ? '<div class="desc">' + p.description + '</div>'
+    : '';
+  const openHtml  = p.url
+    ? '<a href="' + p.url + '" class="link-open" target="_blank">Open</a>'
+    : '';
+  const s = slug(p.name);
+  const dirEscaped = p.dir.replace(/\\/g, '\\\\');
+  const dirHtml   = '<button class="link-dir" onclick="openDir(\'' + dirEscaped + '\')">Dir</button>';
+  const termHtml  = '<button class="link-term" onclick="openTerm(\'' + dirEscaped + '\')">Term</button>';
+  const cmdBtn    = '<button class="link-cmd" id="cmd-btn-' + s + '" onclick="toggleCmd(\'' + s + '\')">Cmd</button>';
+  const ghHtml    = p.github
+    ? '<a href="' + p.github + '" class="link-gh" target="_blank">GitHub</a>'
+    : '';
+
+  let presetsHtml = '';
+  for (const pr of CMD_PRESETS) {
+    presetsHtml += '<option value="' + pr.cmd + '">' + pr.label + '</option>';
+  }
+
+  const cmdPanel = '<div class="cmd-panel" id="cmd-panel-' + s + '" hidden>' +
+    '<div class="cmd-row">' +
+      '<select id="cmd-preset-' + s + '">' + presetsHtml + '</select>' +
+      '<input type="text" id="cmd-input-' + s + '" placeholder="Custom command..." spellcheck="false">' +
+      '<button id="cmd-run-' + s + '" onclick="runCmd(\'' + s + '\',\'' + dirEscaped + '\')">Run</button>' +
+    '</div>' +
+    '<pre class="cmd-output" id="cmd-output-' + s + '" hidden></pre>' +
+  '</div>';
+
+  return '<div class="project">' +
+    '<div class="top-row">' +
+      '<div class="info">' +
+        '<div class="name">' + dotHtml + p.name + (badgeHtml ? ' ' + badgeHtml : '') + '</div>' +
+        descHtml +
+      '</div>' +
+      '<div class="links">' + openHtml + termHtml + dirHtml + cmdBtn + ghHtml + '</div>' +
+    '</div>' +
+    cmdPanel +
+  '</div>';
+}
+
+function renderProjects(projects) {
+  const container = document.getElementById('projects');
+  const sections = {};
+  for (const p of projects) {
+    const s = p.section || 'web';
+    (sections[s] = sections[s] || []).push(p);
+  }
+  const order = ['web', 'desktop', 'docs'];
+  let html = '';
+  for (const key of order) {
+    if (!sections[key]?.length) continue;
+    html += '<div class="section-title">' + (SECTION_LABELS[key] || key) + '</div>';
+    html += sections[key].map(renderCard).join('');
+  }
+  container.innerHTML = html || '<div class="section-title">No projects found</div>';
+}
+
+function checkServices(projects) {
+  for (const p of projects) {
+    if (!p.port) continue;
+    const dot = document.getElementById('status-' + slug(p.name));
+    if (!dot) continue;
+    fetch('http://localhost:' + p.port, { mode: 'no-cors' })
+      .then(function () { dot.className = 'dot dot-green'; })
+      .catch(function () { dot.className = 'dot dot-red'; });
+  }
+}
+
+let _projects = [];
+
+async function init() {
+  const container = document.getElementById('projects');
+  try {
+    const res = await fetch('/projects');
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    _projects = await res.json();
+    renderProjects(_projects);
+    checkServices(_projects);
+    setInterval(function () { checkServices(_projects); }, 30000);
+  } catch (err) {
+    container.innerHTML = '<div class="project"><div class="top-row"><div class="info">' +
+      '<div class="name">Could not load projects</div>' +
+      '<div class="desc">' + err.message + ' — is the helper server running?</div>' +
+      '</div><div class="links"><button class="link-dir" onclick="init()">Retry</button></div></div></div>';
+  }
+}
+
+function checkStatus() {
+  const c = document.getElementById('caddy-status');
+  const h = document.getElementById('helper-status');
+  fetch('http://localhost:2019/config/')
+    .then(function (r) { return r.ok
+      ? (c.innerHTML = '<span class="dot dot-green"></span> Caddy running')
+      : Promise.reject(); })
+    .catch(function () { c.innerHTML = '<span class="dot dot-red"></span> Caddy not running'; });
+  fetch('/open-dir?check=1')
+    .then(function (r) { return r.ok
+      ? (h.innerHTML = '<span class="dot dot-green"></span> Helper running')
+      : Promise.reject(); })
+    .catch(function () { h.innerHTML = '<span class="dot dot-red"></span> Helper not running'; });
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+  init();
+  checkStatus();
+});
+</script>
+</body>
+</html>
