@@ -177,6 +177,36 @@
   }
   .cmd-output[hidden] { display: none; }
 
+  .host-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.3rem;
+    flex-wrap: wrap;
+  }
+  .host-ip {
+    font-size: 0.72rem;
+    font-family: monospace;
+    color: var(--muted);
+  }
+  .host-sep { color: #444; font-size: 0.72rem; }
+  .port-chips { display: flex; gap: 0.35rem; flex-wrap: wrap; }
+  .port-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.15em 0.55em;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-family: monospace;
+    font-weight: 600;
+    background: var(--accent);
+    color: var(--blue);
+    text-decoration: none;
+    transition: filter 0.15s;
+    white-space: nowrap;
+  }
+  .port-chip:hover { filter: brightness(1.25); }
+
   footer {
     margin-top: 3rem;
     text-align: center;
@@ -293,8 +323,9 @@ function runCmd(slug, dir) {
   });
 }
 
-function renderCard(p) {
-  const dotHtml   = p.port
+function renderCard(p, host) {
+  const hasPorts  = p.ports && p.ports.length > 0;
+  const dotHtml   = hasPorts
     ? '<span class="dot dot-red" id="status-' + slug(p.name) + '"></span>'
     : '';
   const badgeHtml = p.tech
@@ -303,6 +334,21 @@ function renderCard(p) {
   const descHtml  = p.description
     ? '<div class="desc">' + p.description + '</div>'
     : '';
+
+  let hostRowHtml = '';
+  if (hasPorts && host) {
+    const chipsHtml = p.ports.map(function (pt) {
+      return '<a href="http://' + host.ip + ':' + pt.port + '" class="port-chip" target="_blank">:' + pt.port + ' ' + pt.label + '</a>';
+    }).join('');
+    hostRowHtml = '<div class="host-row">' +
+      '<span class="host-ip">' + host.ip + '</span>' +
+      '<span class="host-sep">·</span>' +
+      '<span class="host-ip">' + host.hostname + '</span>' +
+      '<span class="host-sep">·</span>' +
+      '<div class="port-chips">' + chipsHtml + '</div>' +
+    '</div>';
+  }
+
   const openHtml  = p.url
     ? '<a href="' + p.url + '" class="link-open" target="_blank">Open</a>'
     : '';
@@ -315,8 +361,11 @@ function renderCard(p) {
     ? '<a href="' + p.github + '" class="link-gh" target="_blank">GitHub</a>'
     : '';
 
+  const allPresets = p.commands && p.commands.length
+    ? CMD_PRESETS.slice(0, -1).concat(p.commands).concat(CMD_PRESETS.slice(-1))
+    : CMD_PRESETS;
   let presetsHtml = '';
-  for (const pr of CMD_PRESETS) {
+  for (const pr of allPresets) {
     presetsHtml += '<option value="' + pr.cmd + '">' + pr.label + '</option>';
   }
 
@@ -334,6 +383,7 @@ function renderCard(p) {
       '<div class="info">' +
         '<div class="name">' + dotHtml + p.name + (badgeHtml ? ' ' + badgeHtml : '') + '</div>' +
         descHtml +
+        hostRowHtml +
       '</div>' +
       '<div class="links">' + openHtml + termHtml + dirHtml + cmdBtn + ghHtml + '</div>' +
     '</div>' +
@@ -341,7 +391,7 @@ function renderCard(p) {
   '</div>';
 }
 
-function renderProjects(projects) {
+function renderProjects(projects, host) {
   const container = document.getElementById('projects');
   const sections = {};
   for (const p of projects) {
@@ -353,31 +403,35 @@ function renderProjects(projects) {
   for (const key of order) {
     if (!sections[key]?.length) continue;
     html += '<div class="section-title">' + (SECTION_LABELS[key] || key) + '</div>';
-    html += sections[key].map(renderCard).join('');
+    html += sections[key].map(function (p) { return renderCard(p, host); }).join('');
   }
   container.innerHTML = html || '<div class="section-title">No projects found</div>';
 }
 
 function checkServices(projects) {
   for (const p of projects) {
-    if (!p.port) continue;
+    const primaryPort = p.ports && p.ports.length ? p.ports[0].port : p.port;
+    if (!primaryPort) continue;
     const dot = document.getElementById('status-' + slug(p.name));
     if (!dot) continue;
-    fetch('http://localhost:' + p.port, { mode: 'no-cors' })
+    fetch('http://localhost:' + primaryPort, { mode: 'no-cors' })
       .then(function () { dot.className = 'dot dot-green'; })
       .catch(function () { dot.className = 'dot dot-red'; });
   }
 }
 
 let _projects = [];
+let _host = null;
 
 async function init() {
   const container = document.getElementById('projects');
   try {
     const res = await fetch('/projects');
     if (!res.ok) throw new Error('HTTP ' + res.status);
-    _projects = await res.json();
-    renderProjects(_projects);
+    const data = await res.json();
+    _host = data.host;
+    _projects = data.projects;
+    renderProjects(_projects, _host);
     checkServices(_projects);
     setInterval(function () { checkServices(_projects); }, 30000);
   } catch (err) {
@@ -391,10 +445,8 @@ async function init() {
 function checkStatus() {
   const c = document.getElementById('caddy-status');
   const h = document.getElementById('helper-status');
-  fetch('http://localhost:2019/config/')
-    .then(function (r) { return r.ok
-      ? (c.innerHTML = '<span class="dot dot-green"></span> Caddy running')
-      : Promise.reject(); })
+  fetch('http://localhost', { mode: 'no-cors' })
+    .then(function () { c.innerHTML = '<span class="dot dot-green"></span> Caddy running'; })
     .catch(function () { c.innerHTML = '<span class="dot dot-red"></span> Caddy not running'; });
   fetch('/open-dir?check=1')
     .then(function (r) { return r.ok
