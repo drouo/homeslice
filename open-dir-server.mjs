@@ -6,6 +6,7 @@ import { join, dirname } from 'node:path';
 import { networkInterfaces, hostname as osHostname } from 'node:os';
 import { linuxTerminalSpec } from './terminal.mjs';
 import { linuxFileManagerSpec } from './filemanager.mjs';
+import { toBrowserUrl } from './giturl.mjs';
 
 const PORT = 3456;
 const SECTION_ORDER = { web: 0, desktop: 1, docs: 2 };
@@ -177,7 +178,7 @@ function loadProjects() {
           port:        ports?.[0]?.port ?? null,
           commands:    Array.isArray(manifest.commands) ? manifest.commands : [],
           dir:         projectDir,
-          github:      manifest.github ?? readGithubUrl(projectDir),
+          github:      toBrowserUrl(manifest.github ?? readGithubUrl(projectDir)),
         });
       } catch {
         // skip malformed manifests
