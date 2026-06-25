@@ -4,6 +4,8 @@ import { URL, fileURLToPath } from 'node:url';
 import { readdirSync, readFileSync, existsSync, writeFileSync, unlinkSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { networkInterfaces, hostname as osHostname } from 'node:os';
+import { linuxTerminalSpec } from './terminal.mjs';
+import { linuxFileManagerSpec } from './filemanager.mjs';
 
 const PORT = 3456;
 const SECTION_ORDER = { web: 0, desktop: 1, docs: 2 };
@@ -191,7 +193,42 @@ function loadProjects() {
   return projects;
 }
 
+function openDir(dir) {
+  if (process.platform !== 'win32') {
+    const spec = linuxFileManagerSpec(dir);
+    if (!spec) {
+      console.error('No file manager found on PATH — cannot open folder:', dir);
+      return;
+    }
+    console.log('openDir: spawning ' + spec.bin + ' for ' + dir);
+    const child = spawn(spec.bin, spec.args, {
+      detached: true, stdio: 'ignore', env: process.env,
+    });
+    child.on('error', (err) => console.error('file manager launch error:', err.message));
+    child.unref();
+    return;
+  }
+  runInteractive('explorer "' + dir + '"');
+}
+
 function openTerminal(dir) {
+  if (process.platform !== 'win32') {
+    // Linux/macOS: the helper runs in the user's session (it has DISPLAY),
+    // so we can spawn a terminal emulator directly — no scheduled-task dance.
+    const spec = linuxTerminalSpec(dir);
+    if (!spec) {
+      console.error('No terminal emulator found on PATH — cannot open terminal for:', dir);
+      return;
+    }
+    console.log('openTerminal: spawning ' + spec.bin + ' in ' + dir);
+    const child = spawn(spec.bin, spec.args, {
+      cwd: dir, detached: true, stdio: 'ignore', env: process.env,
+    });
+    child.on('error', (err) => console.error('terminal launch error:', err.message));
+    child.unref();
+    return;
+  }
+
   const wtPath = join(process.env.LOCALAPPDATA || '', 'Microsoft', 'WindowsApps', 'wt.exe');
   if (existsSync(wtPath)) {
     runInteractive('wt -d "' + dir + '"');
@@ -207,7 +244,7 @@ createServer((req, res) => {
     res.writeHead(200, { 'Access-Control-Allow-Origin': '*' });
     const dir = url.searchParams.get('path');
     if (dir && dir !== '1') {
-      runInteractive('explorer "' + dir + '"');
+      openDir(dir);
     }
     res.end('OK');
 
