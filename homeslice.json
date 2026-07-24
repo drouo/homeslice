@@ -3,5 +3,7 @@
   "description": "Local development project dashboard",
   "tech": "Node.js + vanilla JS",
   "section": "desktop",
-  "url": "http://homeslice.localhost"
+  "url": "http://homeslice.localhost",
+  "github": "https://github.com/drouo/homeslice",
+  "scheduledTask": "Homeslice Helper"
 }

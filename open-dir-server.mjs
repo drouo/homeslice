@@ -8,6 +8,7 @@ import { linuxTerminalSpec } from './terminal.mjs';
 import { linuxFileManagerSpec } from './filemanager.mjs';
 import { toBrowserUrl } from './giturl.mjs';
 import { detectAppInfo, listUnclaimed, writeManifest } from './appdetect.mjs';
+import { getServiceStatuses, runServiceAction, tailLog, isValidAction } from './services.mjs';
 
 const PORT = 3456;
 const SECTION_ORDER = { web: 0, desktop: 1, docs: 2 };
@@ -191,6 +192,8 @@ function loadProjects() {
           commands:    Array.isArray(manifest.commands) ? manifest.commands : [],
           dir:         projectDir,
           github:      toBrowserUrl(manifest.github ?? readGithubUrl(projectDir)),
+          scheduledTask: manifest.scheduledTask ?? null,
+          logPath:       manifest.logPath ?? null,
         });
       } catch {
         // skip malformed manifests
@@ -299,6 +302,31 @@ function handleWriteApp(res, payload, mode) {
     sendJson(res, 200, { ok: true });
   } catch (e) {
     sendJson(res, statusByCode[e.code] || 500, { error: e.message || 'Failed to write manifest' });
+  }
+}
+
+// Only projects the loaded manifests actually declare a scheduledTask for are
+// controllable — mirrors /run's "dir must be a known project" boundary.
+function findServiceProject(taskName) {
+  return loadProjects().find(p => p.scheduledTask === taskName) || null;
+}
+
+function handleServiceAction(res, payload) {
+  let body;
+  try { body = JSON.parse(payload); }
+  catch { return sendJson(res, 400, { error: 'Invalid request body' }); }
+
+  const { task, action } = body;
+  if (!task || typeof task !== 'string') return sendJson(res, 400, { error: 'task is required' });
+  if (!isValidAction(action)) return sendJson(res, 400, { error: 'Unknown action: ' + action });
+  if (!findServiceProject(task)) return sendJson(res, 403, { error: 'Not a registered service' });
+
+  try {
+    runServiceAction(task, action);
+    const statuses = getServiceStatuses([task]);
+    sendJson(res, 200, { ok: true, state: statuses[task]?.state ?? null });
+  } catch (e) {
+    sendJson(res, e.code === 'EVALIDATION' ? 400 : 500, { error: e.message || 'Action failed' });
   }
 }
 
@@ -431,6 +459,33 @@ function handleRequest(req, res) {
     let body = '';
     req.on('data', chunk => body += chunk);
     req.on('end', () => handleWriteApp(res, body, 'update'));
+
+  } else if (url.pathname === '/services') {
+    const serviceProjects = loadProjects().filter(p => p.scheduledTask);
+    const statuses = getServiceStatuses(serviceProjects.map(p => p.scheduledTask));
+    sendJson(res, 200, {
+      services: serviceProjects.map(p => ({
+        name: p.name,
+        dir: p.dir,
+        taskName: p.scheduledTask,
+        state: statuses[p.scheduledTask]?.state ?? null,
+        hasLog: !!p.logPath,
+      })),
+    });
+
+  } else if (url.pathname === '/service-action' && req.method === 'POST') {
+    let body = '';
+    req.on('data', chunk => body += chunk);
+    req.on('end', () => handleServiceAction(res, body));
+
+  } else if (url.pathname === '/service-log') {
+    const task = url.searchParams.get('task');
+    if (!task) { sendJson(res, 400, { error: 'task is required' }); return; }
+    const proj = findServiceProject(task);
+    if (!proj) { sendJson(res, 403, { error: 'Not a registered service' }); return; }
+    if (!proj.logPath) { sendJson(res, 404, { error: 'No log configured for this service' }); return; }
+    const log = tailLog(proj.logPath);
+    sendJson(res, 200, { log: log ?? '', exists: log !== null });
 
   } else {
     res.writeHead(404);

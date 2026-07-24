@@ -281,6 +281,33 @@
   .badge-unclaimed { background: #5e4a1e !important; color: #f0c674 !important; }
   .desc.mono { font-family: monospace; font-size: 0.72rem; word-break: break-all; }
 
+  /* Services (Scheduled Task control) */
+  .service-card { border-left: 3px solid var(--blue); }
+  .state-badge.state-running  { background: #1e4a2d !important; color: var(--green) !important; }
+  .state-badge.state-stopped  { background: var(--accent) !important; color: var(--blue) !important; }
+  .state-badge.state-disabled { background: #5e4a1e !important; color: #f0c674 !important; }
+  .state-badge.state-queued   { background: #2d2d5e !important; color: var(--blue) !important; }
+  .state-badge.state-unknown  { background: #5e2d2d !important; color: #ff8a80 !important; }
+  .link-svc {
+    cursor: pointer; border: none; font-family: inherit; font-size: 0.8rem; font-weight: 500;
+    padding: 0.35rem 0.75rem; border-radius: 6px; transition: all 0.15s; white-space: nowrap;
+  }
+  .link-svc:disabled { opacity: 0.5; cursor: not-allowed; }
+  .link-svc-start, .link-svc-enable { background: var(--green); color: #000; }
+  .link-svc-start:hover, .link-svc-enable:hover { filter: brightness(1.1); }
+  .link-svc-stop { background: #7e3d3d; color: var(--text); }
+  .link-svc-stop:hover { background: #9e4d4d; }
+  .link-svc-restart { background: #2d2d5e; color: var(--text); }
+  .link-svc-restart:hover { background: #3d3d7e; }
+  .link-svc-disable { background: #5e4a1e; color: #f0c674; }
+  .link-svc-disable:hover { background: #7e621e; }
+  .link-svc-log {
+    background: #222; color: var(--text); cursor: pointer; border: none; font-family: inherit;
+    font-size: 0.8rem; font-weight: 500; padding: 0.35rem 0.75rem; border-radius: 6px;
+    transition: all 0.15s; white-space: nowrap;
+  }
+  .link-svc-log:hover { background: #333; }
+
   footer {
     margin-top: 3rem;
     text-align: center;
@@ -322,6 +349,8 @@
   <div id="manual-form-container"></div>
 
   <div id="projects"><div class="section-title">Loading…</div></div>
+
+  <div id="services"></div>
 
   <footer>
     <span id="caddy-status"><span class="dot dot-red"></span> Caddy not running</span>
@@ -396,6 +425,8 @@ function appFormHtml(prefix, data, mode, opts) {
     '<div class="form-row"><label>URL</label><input type="text" id="' + prefix + '-url" spellcheck="false" value="' + val(d.url) + '"></div>' +
     portRow +
     '<div class="form-row"><label>GitHub</label><input type="text" id="' + prefix + '-github" spellcheck="false" value="' + val(d.github) + '"></div>' +
+    '<div class="form-row"><label>Sched. Task</label><input type="text" id="' + prefix + '-scheduledTask" spellcheck="false" placeholder="e.g. Goalspace" value="' + val(d.scheduledTask) + '"></div>' +
+    '<div class="form-row"><label>Log Path</label><input type="text" id="' + prefix + '-logPath" spellcheck="false" placeholder="C:\\Apps\\my-app\\logs\\app.log" value="' + val(d.logPath) + '"></div>' +
     '<div class="form-actions">' +
       '<button type="button" class="form-save" id="' + prefix + '-save" onclick="saveApp(\'' + prefix + '\',\'' + mode + '\',' + hasMultiPort + ')">Save</button>' +
       '<button type="button" class="form-cancel" onclick="cancelForm(\'' + prefix + '\')">Cancel</button>' +
@@ -408,6 +439,7 @@ function fillForm(prefix, d) {
   const set = (f, v) => { const el = document.getElementById(prefix + '-' + f); if (el) el.value = v == null ? '' : v; };
   set('name', d.name); set('description', d.description); set('tech', d.tech);
   set('url', d.url); set('port', d.port); set('github', d.github);
+  set('scheduledTask', d.scheduledTask); set('logPath', d.logPath);
   const sec = document.getElementById(prefix + '-section');
   if (sec && d.section) sec.value = d.section;
 }
@@ -443,6 +475,8 @@ function saveApp(prefix, mode, hasMultiPort) {
     section: get('section'),
     url: get('url'),
     github: get('github'),
+    scheduledTask: get('scheduledTask'),
+    logPath: get('logPath'),
   };
   if (!hasMultiPort) body.port = get('port');
 
@@ -608,7 +642,7 @@ function renderCard(p, host) {
   const editData = {
     dir: p.dir, name: p.name, description: p.description, tech: p.tech,
     section: p.section || 'web', url: p.url, port: p.port, github: p.github,
-    ports: p.ports,
+    ports: p.ports, scheduledTask: p.scheduledTask, logPath: p.logPath,
   };
   const editPanel = '<div class="form-panel" id="edit-panel-' + s + '" hidden>' +
     appFormHtml('edit-' + s, editData, 'edit', {}) + '</div>';
@@ -663,6 +697,113 @@ function matchesQuery(p) {
   if (!_searchQuery) return true;
   const hay = [p.name, p.description, p.tech].filter(Boolean).join(' ').toLowerCase();
   return hay.includes(_searchQuery);
+}
+
+// Windows Scheduled Task control panel. Distinct naming (Svc-prefixed) on
+// purpose — checkServices()/_servicesTimer above are the unrelated port-status
+// pollers for project cards.
+const SVC_STATE_LABELS = {
+  Running:  { text: 'Running',  cls: 'state-running' },
+  Ready:    { text: 'Stopped',  cls: 'state-stopped' },
+  Disabled: { text: 'Disabled', cls: 'state-disabled' },
+  Queued:   { text: 'Queued',   cls: 'state-queued' },
+};
+const SVC_BTN_CLASS = {
+  start: 'link-svc-start', stop: 'link-svc-stop', restart: 'link-svc-restart',
+  enable: 'link-svc-enable', disable: 'link-svc-disable',
+};
+
+function renderServiceCard(s) {
+  const label = SVC_STATE_LABELS[s.state] || { text: s.state || 'Unknown', cls: 'state-unknown' };
+  const dotCls = s.state === 'Running' ? 'dot-green' : 'dot-red';
+  const id = slug(s.taskName);
+  const taskEsc = jsStringEscape(s.taskName);
+
+  function svcBtn(label, action) {
+    return '<button class="link-svc ' + SVC_BTN_CLASS[action] + '" onclick="runSvcAction(\'' + taskEsc + '\',\'' + action + '\',\'' + id + '\')">' + label + '</button>';
+  }
+
+  let actionsHtml;
+  if (s.state === 'Running') actionsHtml = svcBtn('Stop', 'stop') + svcBtn('Restart', 'restart') + svcBtn('Disable', 'disable');
+  else if (s.state === 'Ready') actionsHtml = svcBtn('Start', 'start') + svcBtn('Disable', 'disable');
+  else if (s.state === 'Disabled') actionsHtml = svcBtn('Start', 'start') + svcBtn('Enable', 'enable');
+  else if (s.state === 'Queued') actionsHtml = svcBtn('Stop', 'stop');
+  else actionsHtml = '<span class="form-note" style="padding-left:0">Not registered — run install-startup-task.ps1</span>';
+
+  const logBtn = s.hasLog
+    ? '<button class="link-svc-log" onclick="toggleSvcLog(\'' + id + '\',\'' + taskEsc + '\')">Log</button>'
+    : '';
+
+  return '<div class="project service-card">' +
+    '<div class="top-row">' +
+      '<div class="info">' +
+        '<div class="name"><span class="dot ' + dotCls + '"></span> ' + htmlEscape(s.name) + ' <span class="badge state-badge ' + label.cls + '">' + label.text + '</span></div>' +
+        '<div class="desc mono">' + htmlEscape(s.taskName) + '</div>' +
+        '<div class="form-error" id="svc-error-' + id + '"></div>' +
+      '</div>' +
+      '<div class="links" id="svc-actions-' + id + '">' + actionsHtml + logBtn + '</div>' +
+    '</div>' +
+    '<pre class="cmd-output" id="svc-log-' + id + '" hidden></pre>' +
+  '</div>';
+}
+
+function renderSvcSection(services) {
+  const container = document.getElementById('services');
+  if (!container) return;
+  const filtered = (services || []).filter(function (s) {
+    if (!_searchQuery) return true;
+    return (s.name + ' ' + s.taskName).toLowerCase().includes(_searchQuery);
+  });
+  if (!filtered.length) { container.innerHTML = ''; return; }
+  container.innerHTML = '<div class="section-title">Services (' + filtered.length + ')</div>' +
+    filtered.map(renderServiceCard).join('');
+}
+
+function refreshSvc() {
+  return fetch('/services')
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+      _svcList = data.services || [];
+      renderSvcSection(_svcList);
+    })
+    .catch(function () { /* leave the stale panel up on a transient failure */ });
+}
+
+function runSvcAction(taskName, action, id) {
+  const actionsEl = document.getElementById('svc-actions-' + id);
+  const errEl = document.getElementById('svc-error-' + id);
+  if (errEl) errEl.textContent = '';
+  if (actionsEl) actionsEl.querySelectorAll('button').forEach(function (b) { b.disabled = true; });
+  fetch('/service-action', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ task: taskName, action: action }),
+  })
+    .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+    .then(function (res) {
+      if (!res.ok && errEl) errEl.textContent = res.j.error || 'Action failed.';
+      return refreshSvc();
+    })
+    .catch(function (err) {
+      if (errEl) errEl.textContent = 'Network error: ' + err.message;
+      if (actionsEl) actionsEl.querySelectorAll('button').forEach(function (b) { b.disabled = false; });
+    });
+}
+
+function toggleSvcLog(id, taskName) {
+  const pre = document.getElementById('svc-log-' + id);
+  if (!pre) return;
+  if (!pre.hasAttribute('hidden')) { pre.setAttribute('hidden', ''); return; }
+  pre.removeAttribute('hidden');
+  pre.textContent = 'Loading…';
+  fetch('/service-log?task=' + encodeURIComponent(taskName))
+    .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+    .then(function (res) {
+      if (!res.ok) { pre.textContent = 'Error: ' + (res.j.error || 'failed to load log'); return; }
+      pre.textContent = res.j.exists ? (res.j.log || '(empty log file)') : '(no log file found)';
+      pre.scrollTop = pre.scrollHeight;
+    })
+    .catch(function (err) { pre.textContent = 'Network error: ' + err.message; });
 }
 
 function renderProjects(projects, host, unclaimed) {
@@ -721,13 +862,15 @@ let _unclaimed = [];
 let _servicesTimer = null;
 let _statusMap = {};
 let _searchQuery = '';
+let _svcList = [];
 
 async function init() {
   const container = document.getElementById('projects');
   try {
-    const [res, uRes] = await Promise.all([
+    const [res, uRes, sRes] = await Promise.all([
       fetch('/projects'),
       fetch('/unclaimed').catch(function () { return null; }),
+      fetch('/services').catch(function () { return null; }),
     ]);
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
@@ -737,7 +880,12 @@ async function init() {
     if (uRes && uRes.ok) {
       try { _unclaimed = (await uRes.json()).unclaimed || []; } catch {}
     }
+    _svcList = [];
+    if (sRes && sRes.ok) {
+      try { _svcList = (await sRes.json()).services || []; } catch {}
+    }
     renderProjects(_projects, _host, _unclaimed);
+    renderSvcSection(_svcList);
     checkServices(_projects);
     if (!_servicesTimer) _servicesTimer = setInterval(function () { checkServices(_projects); }, 30000);
   } catch (err) {
@@ -764,6 +912,7 @@ function checkStatus() {
 function onSearchInput() {
   _searchQuery = document.getElementById('search-input').value.trim().toLowerCase();
   renderProjects(_projects, _host, _unclaimed);
+  renderSvcSection(_svcList);
 }
 
 document.addEventListener('keydown', function (e) {

@@ -9,7 +9,7 @@ import { toBrowserUrl } from './giturl.mjs';
 const CONFIG_PATH = join(dirname(fileURLToPath(import.meta.url)), 'homeslice.config.json');
 
 // Fields the form manages; everything else in an existing manifest is preserved.
-export const MANAGED_FIELDS = ['name', 'description', 'tech', 'section', 'url', 'port', 'github'];
+export const MANAGED_FIELDS = ['name', 'description', 'tech', 'section', 'url', 'port', 'github', 'scheduledTask', 'logPath'];
 
 // ── Shared config / git helpers (one implementation, reused by the detector) ───
 
