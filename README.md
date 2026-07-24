@@ -15,7 +15,10 @@ Browser  ──►  Caddy (port 80)  ──►  Static files (index.html)
                           ├── /update-app   — merge-update an existing homeslice.json
                           ├── /open-dir     — open folder in Explorer
                           ├── /open-term    — open terminal at project root
-                          └── /run          — execute a command in a project
+                          ├── /run          — execute a command in a project
+                          ├── /services     — status of projects with a scheduledTask
+                          ├── /service-action — start/stop/enable/disable/restart a task
+                          └── /service-log  — tail a project's configured logPath
 ```
 
 - **Caddy** reverse-proxies `homeslice.localhost` to serve the dashboard and route API calls to the helper server.
@@ -104,6 +107,8 @@ project's root directory. Fields:
 | `section` | no | `web` / `desktop` / `docs` (defaults to `web`) |
 | `url` | no | Shows an "Open" button linking here |
 | `port` | no | Live status dot — pings `localhost:<port>` every 30s |
+| `scheduledTask` | no | Windows Task Scheduler task name — adds this project to the **Services** panel |
+| `logPath` | no | Log file path — adds a **Log** button (tails the last 200 KB) to its Services card |
 
 The project's GitHub URL is auto-detected from `.git/config` if present.
 
@@ -121,6 +126,25 @@ Each project card shows:
 | **GitHub** | Opens the project's GitHub page |
 
 The status dot (left of the project name) is green when the project's port is responding, red otherwise.
+
+## Services panel
+
+Any project whose manifest sets `scheduledTask` gets a card in the **Services**
+section, controlling the named Windows Scheduled Task:
+
+| Button | Action |
+|--------|--------|
+| **Start** / **Stop** / **Restart** | Runs the task's action now — works without the Helper itself being elevated; Task Scheduler elevates the task's own action internally using its stored principal. |
+| **Enable** / **Disable** | Toggles the task's registration. Unlike Start/Stop, this modifies the task's stored definition, which Windows requires an elevated caller for (observed even on a task registered at Limited run-level) — the Helper runs a one-shot elevated child process for just this action. On a normal desktop this will show a UAC prompt. |
+| **Log** | Only shown if the manifest sets `logPath`; tails the last 200 KB of that file. |
+
+The search bar filters the Services panel too (matches project name or task name).
+
+Adding a new controllable service is a manifest edit, not a code change — set
+`scheduledTask` (and optionally `logPath`) via the Edit form or by hand in
+`homeslice.json`. `/service-action` only allows a task name that's currently
+declared by some registered project's manifest, mirroring how `/run` only
+allows commands in a directory that's already a registered project.
 
 ## Configuration
 
@@ -151,4 +175,6 @@ caddy run --config C:\Apps\caddy\Caddyfile
 - The `/run` endpoint only executes commands in known project directories (validated against the loaded project list).
 - The `/add-app` and `/update-app` endpoints only write a `homeslice.json` into a path that already exists and is a directory (resolved to a real absolute path first). `/update-app` additionally requires an existing manifest and preserves any fields the form doesn't manage.
 - Commands have a 30-second timeout and output is capped at 100 KB.
+- `/service-action` only allows task names declared by a registered project's `scheduledTask` field, and only the five whitelisted verbs (start/stop/enable/disable/restart) — never an arbitrary Task Scheduler name or cmdlet.
+- `/service-log` only reads the exact `logPath` from the matching project's own manifest — never a client-supplied path — and caps output to the last 200 KB.
 - Everything runs on localhost only (`.localhost` domains don't resolve externally).
