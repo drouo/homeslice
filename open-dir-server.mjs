@@ -16,6 +16,17 @@ const MAX_OUTPUT = 100 * 1024;
 const CMD_TIMEOUT = 120000;
 const PS_EXE = process.env.windir + '\\System32\\WindowsPowerShell\\v1.0\\powershell.exe';
 
+// This server is meant to run unattended for days at a time. An uncaught
+// exception in Node kills the whole process by default, which would take the
+// dashboard down for every project until someone notices and restarts it —
+// log and keep running instead.
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught exception (server kept running):', err);
+});
+process.on('unhandledRejection', (err) => {
+  console.error('Unhandled rejection (server kept running):', err);
+});
+
 // ── Interactive session launcher ──────────────────────────────────────────────
 // Services run in Session 0, isolated from the user's desktop. Direct spawn()
 // of explorer.exe, wt.exe etc. won't open visible windows. Instead we create a
@@ -292,6 +303,20 @@ function handleWriteApp(res, payload, mode) {
 }
 
 createServer((req, res) => {
+  try {
+    handleRequest(req, res);
+  } catch (e) {
+    console.error('Request handler threw:', e);
+    if (!res.headersSent) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Internal server error' }));
+    }
+  }
+}).listen(PORT, '127.0.0.1', () => {
+  console.log('open-dir server listening on http://127.0.0.1:' + PORT);
+});
+
+function handleRequest(req, res) {
   const url = new URL(req.url, 'http://localhost:' + PORT);
 
   if (url.pathname === '/open-dir') {
@@ -411,6 +436,4 @@ createServer((req, res) => {
     res.writeHead(404);
     res.end('Not found');
   }
-}).listen(PORT, '127.0.0.1', () => {
-  console.log('open-dir server listening on http://127.0.0.1:' + PORT);
-});
+}
