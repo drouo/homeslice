@@ -44,6 +44,25 @@
     margin-bottom: 0.75rem;
     margin-top: 1.5rem;
   }
+  .search-row { margin-bottom: 1.25rem; }
+  .search-input {
+    width: 100%;
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid #333;
+    border-radius: 6px;
+    padding: 0.55rem 0.8rem;
+    font-size: 0.85rem;
+    font-family: inherit;
+  }
+  .search-input:focus { outline: none; border-color: var(--accent); }
+  .search-input::placeholder { color: var(--muted); }
+  .search-empty {
+    color: var(--muted);
+    font-size: 0.85rem;
+    padding: 1.5rem 0;
+    text-align: center;
+  }
   .project {
     background: var(--card);
     border: 1px solid #222;
@@ -294,6 +313,12 @@
     <button id="add-app-btn" class="add-app-btn" onclick="toggleManualForm()">+ Add app</button>
   </header>
 
+  <div class="search-row">
+    <input type="text" id="search-input" class="search-input"
+      placeholder="Filter by name, description, or tech... (press / to focus)"
+      oninput="onSearchInput()" spellcheck="false">
+  </div>
+
   <div id="manual-form-container"></div>
 
   <div id="projects"><div class="section-title">Loading…</div></div>
@@ -328,6 +353,13 @@ function htmlEscape(s) {
   return String(s == null ? '' : s)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+// Safe to splice into a single-quoted JS string literal inside an onclick="...".
+function jsStringEscape(s) {
+  return String(s == null ? '' : s)
+    .replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+    .replace(/\r?\n/g, '\\n');
 }
 
 // Shared inline add/edit form. prefix gives every field a unique id; mode is
@@ -535,41 +567,42 @@ function runCmd(slug, dir) {
 
 function renderCard(p, host) {
   const hasPorts  = p.ports && p.ports.length > 0;
+  const cachedStatus = _statusMap[slug(p.name)] || 'red';
   const dotHtml   = hasPorts
-    ? '<span class="dot dot-red" id="status-' + slug(p.name) + '"></span>'
+    ? '<span class="dot dot-' + cachedStatus + '" id="status-' + slug(p.name) + '"></span>'
     : '';
   const badgeHtml = p.tech
-    ? '<span class="badge">' + p.tech + '</span>'
+    ? '<span class="badge">' + htmlEscape(p.tech) + '</span>'
     : '';
   const descHtml  = p.description
-    ? '<div class="desc">' + p.description + '</div>'
+    ? '<div class="desc">' + htmlEscape(p.description) + '</div>'
     : '';
 
   let hostRowHtml = '';
   if (hasPorts && host) {
     const chipsHtml = p.ports.map(function (pt) {
-      return '<a href="http://' + host.ip + ':' + pt.port + '" class="port-chip" target="_blank">:' + pt.port + ' ' + pt.label + '</a>';
+      return '<a href="http://' + htmlEscape(host.ip) + ':' + Number(pt.port) + '" class="port-chip" target="_blank">:' + Number(pt.port) + ' ' + htmlEscape(pt.label) + '</a>';
     }).join('');
     hostRowHtml = '<div class="host-row">' +
-      '<span class="host-ip">' + host.ip + '</span>' +
+      '<span class="host-ip">' + htmlEscape(host.ip) + '</span>' +
       '<span class="host-sep">·</span>' +
-      '<span class="host-ip">' + host.hostname + '</span>' +
+      '<span class="host-ip">' + htmlEscape(host.hostname) + '</span>' +
       '<span class="host-sep">·</span>' +
       '<div class="port-chips">' + chipsHtml + '</div>' +
     '</div>';
   }
 
   const openHtml  = p.url
-    ? '<a href="' + p.url + '" class="link-open" target="_blank">Open</a>'
+    ? '<a href="' + htmlEscape(p.url) + '" class="link-open" target="_blank">Open</a>'
     : '';
   const s = slug(p.name);
-  const dirEscaped = p.dir.replace(/\\/g, '\\\\');
+  const dirEscaped = jsStringEscape(p.dir);
   const dirHtml   = '<button class="link-dir" onclick="openDir(\'' + dirEscaped + '\')">Dir</button>';
   const termHtml  = '<button class="link-term" onclick="openTerm(\'' + dirEscaped + '\')">Term</button>';
   const cmdBtn    = '<button class="link-cmd" id="cmd-btn-' + s + '" onclick="toggleCmd(\'' + s + '\')">Cmd</button>';
   const editBtn   = '<button class="link-edit" id="edit-btn-' + s + '" onclick="togglePanel(\'edit-panel-' + s + '\')">Edit</button>';
   const ghHtml    = p.github
-    ? '<a href="' + p.github + '" class="link-gh" target="_blank">GitHub</a>'
+    ? '<a href="' + htmlEscape(p.github) + '" class="link-gh" target="_blank">GitHub</a>'
     : '';
 
   const editData = {
@@ -585,7 +618,7 @@ function renderCard(p, host) {
     : CMD_PRESETS;
   let presetsHtml = '';
   for (const pr of allPresets) {
-    presetsHtml += '<option value="' + pr.cmd + '">' + pr.label + '</option>';
+    presetsHtml += '<option value="' + htmlEscape(pr.cmd) + '">' + htmlEscape(pr.label) + '</option>';
   }
 
   const cmdPanel = '<div class="cmd-panel" id="cmd-panel-' + s + '" hidden>' +
@@ -600,7 +633,7 @@ function renderCard(p, host) {
   return '<div class="project">' +
     '<div class="top-row">' +
       '<div class="info">' +
-        '<div class="name">' + dotHtml + p.name + (badgeHtml ? ' ' + badgeHtml : '') + '</div>' +
+        '<div class="name">' + dotHtml + htmlEscape(p.name) + (badgeHtml ? ' ' + badgeHtml : '') + '</div>' +
         descHtml +
         hostRowHtml +
       '</div>' +
@@ -626,10 +659,19 @@ function renderUnclaimedCard(d, idx) {
   '</div>';
 }
 
+function matchesQuery(p) {
+  if (!_searchQuery) return true;
+  const hay = [p.name, p.description, p.tech].filter(Boolean).join(' ').toLowerCase();
+  return hay.includes(_searchQuery);
+}
+
 function renderProjects(projects, host, unclaimed) {
   const container = document.getElementById('projects');
+  const filteredProjects = projects.filter(matchesQuery);
+  const filteredUnclaimed = (unclaimed || []).filter(matchesQuery);
+
   const sections = {};
-  for (const p of projects) {
+  for (const p of filteredProjects) {
     const s = p.section || 'web';
     (sections[s] = sections[s] || []).push(p);
   }
@@ -637,14 +679,19 @@ function renderProjects(projects, host, unclaimed) {
   let html = '';
   for (const key of order) {
     if (!sections[key]?.length) continue;
-    html += '<div class="section-title">' + (SECTION_LABELS[key] || key) + '</div>';
+    html += '<div class="section-title">' + (SECTION_LABELS[key] || key) + ' (' + sections[key].length + ')</div>';
     html += sections[key].map(function (p) { return renderCard(p, host); }).join('');
   }
-  if (!html) html = '<div class="section-title">No projects found</div>';
 
-  if (unclaimed && unclaimed.length) {
-    html += '<div class="section-title">Not Yet Added (' + unclaimed.length + ')</div>';
-    html += unclaimed.map(function (d, i) { return renderUnclaimedCard(d, i); }).join('');
+  if (filteredUnclaimed.length) {
+    html += '<div class="section-title">Not Yet Added (' + filteredUnclaimed.length + ')</div>';
+    html += filteredUnclaimed.map(function (d, i) { return renderUnclaimedCard(d, i); }).join('');
+  }
+
+  if (!html) {
+    html = _searchQuery
+      ? '<div class="search-empty">No projects match "' + htmlEscape(_searchQuery) + '".</div>'
+      : '<div class="section-title">No projects found</div>';
   }
   container.innerHTML = html;
 }
@@ -653,11 +700,18 @@ function checkServices(projects) {
   for (const p of projects) {
     const primaryPort = p.ports && p.ports.length ? p.ports[0].port : p.port;
     if (!primaryPort) continue;
-    const dot = document.getElementById('status-' + slug(p.name));
-    if (!dot) continue;
-    fetch('http://localhost:' + primaryPort, { mode: 'no-cors' })
-      .then(function () { dot.className = 'dot dot-green'; })
-      .catch(function () { dot.className = 'dot dot-red'; });
+    const key = slug(p.name);
+    fetch('http://localhost:' + primaryPort, { mode: 'no-cors', signal: AbortSignal.timeout(3000) })
+      .then(function () {
+        _statusMap[key] = 'green';
+        const dot = document.getElementById('status-' + key);
+        if (dot) dot.className = 'dot dot-green';
+      })
+      .catch(function () {
+        _statusMap[key] = 'red';
+        const dot = document.getElementById('status-' + key);
+        if (dot) dot.className = 'dot dot-red';
+      });
   }
 }
 
@@ -665,6 +719,8 @@ let _projects = [];
 let _host = null;
 let _unclaimed = [];
 let _servicesTimer = null;
+let _statusMap = {};
+let _searchQuery = '';
 
 async function init() {
   const container = document.getElementById('projects');
@@ -695,15 +751,28 @@ async function init() {
 function checkStatus() {
   const c = document.getElementById('caddy-status');
   const h = document.getElementById('helper-status');
-  fetch('http://localhost', { mode: 'no-cors' })
+  fetch('http://localhost', { mode: 'no-cors', signal: AbortSignal.timeout(3000) })
     .then(function () { c.innerHTML = '<span class="dot dot-green"></span> Caddy running'; })
     .catch(function () { c.innerHTML = '<span class="dot dot-red"></span> Caddy not running'; });
-  fetch('/open-dir?check=1')
+  fetch('/open-dir?check=1', { signal: AbortSignal.timeout(3000) })
     .then(function (r) { return r.ok
       ? (h.innerHTML = '<span class="dot dot-green"></span> Helper running')
       : Promise.reject(); })
     .catch(function () { h.innerHTML = '<span class="dot dot-red"></span> Helper not running'; });
 }
+
+function onSearchInput() {
+  _searchQuery = document.getElementById('search-input').value.trim().toLowerCase();
+  renderProjects(_projects, _host, _unclaimed);
+}
+
+document.addEventListener('keydown', function (e) {
+  if (e.key !== '/') return;
+  const tag = document.activeElement && document.activeElement.tagName;
+  if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+  e.preventDefault();
+  document.getElementById('search-input').focus();
+});
 
 document.addEventListener('DOMContentLoaded', function () {
   init();
