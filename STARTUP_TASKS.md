@@ -9,9 +9,9 @@ Caddy provides `*.localhost` routing to all apps over HTTP on port 80.
 |------------------|------------|-----------|------------------|-------------------------------|
 | Homeslice Caddy  | Registered | Highest   | 80               | *(all .localhost domains)*    |
 | Homeslice Helper | Registered | Limited   | 3456             | internal — used by index.html |
-| Goalspace        | Pending    | Highest   | 4040 / 4174      | http://goalspace.localhost    |
-| Serverspace      | Pending    | Highest   | 4000 / 5002      | http://serverspace.localhost  |
-| Affinatrix       | Pending    | Limited   | 5001             | http://affinatrix.localhost   |
+| Goalspace        | Registered | Highest   | 4040 / 4174      | http://goalspace.localhost    |
+| Serverspace      | Registered | Highest   | 4000 / 5002      | http://serverspace.localhost  |
+| Affinatrix       | Registered | Limited   | 5001             | http://affinatrix.localhost   |
 
 Run `install-startup-task.ps1` **as Administrator** to register or refresh all tasks.
 
