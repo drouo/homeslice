@@ -1,12 +1,13 @@
 import { createServer } from 'node:http';
 import { spawn, execSync } from 'node:child_process';
 import { URL, fileURLToPath } from 'node:url';
-import { readdirSync, readFileSync, existsSync, writeFileSync, unlinkSync } from 'node:fs';
+import { readdirSync, readFileSync, existsSync, writeFileSync, unlinkSync, statSync, realpathSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { networkInterfaces, hostname as osHostname } from 'node:os';
 import { linuxTerminalSpec } from './terminal.mjs';
 import { linuxFileManagerSpec } from './filemanager.mjs';
 import { toBrowserUrl } from './giturl.mjs';
+import { detectAppInfo, listUnclaimed, writeManifest } from './appdetect.mjs';
 
 const PORT = 3456;
 const SECTION_ORDER = { web: 0, desktop: 1, docs: 2 };
@@ -238,6 +239,58 @@ function openTerminal(dir) {
   }
 }
 
+function sendJson(res, status, obj) {
+  res.writeHead(status, {
+    'Content-Type': 'application/json',
+    'Access-Control-Allow-Origin': '*',
+  });
+  res.end(JSON.stringify(obj));
+}
+
+// Validate a target directory for the add/edit endpoints. Per the design, the
+// `+` manual flow may point at any existing directory (trusted localhost
+// operator), so we only require that the resolved real path exists and is a
+// directory. Returns { ok, dir } or { ok:false, status, error }.
+function validateAppPath(dir) {
+  if (!dir || typeof dir !== 'string') {
+    return { ok: false, status: 400, error: 'dir is required' };
+  }
+  let abs;
+  try { abs = realpathSync(dir); }
+  catch { return { ok: false, status: 404, error: 'Directory does not exist' }; }
+  try {
+    if (!statSync(abs).isDirectory()) {
+      return { ok: false, status: 400, error: 'Path is not a directory' };
+    }
+  } catch {
+    return { ok: false, status: 404, error: 'Directory does not exist' };
+  }
+  return { ok: true, dir: abs };
+}
+
+function handleWriteApp(res, payload, mode) {
+  let body;
+  try { body = JSON.parse(payload); }
+  catch { return sendJson(res, 400, { error: 'Invalid request body' }); }
+
+  const v = validateAppPath(body.dir);
+  if (!v.ok) return sendJson(res, v.status, { error: v.error });
+
+  const statusByCode = {
+    EXISTS: 409,
+    ENOENT_MANIFEST: 404,
+    ENOENT_DIR: 404,
+    EVALIDATION: 400,
+    EBADJSON: 400,
+  };
+  try {
+    writeManifest(v.dir, body, { mode });
+    sendJson(res, 200, { ok: true });
+  } catch (e) {
+    sendJson(res, statusByCode[e.code] || 500, { error: e.message || 'Failed to write manifest' });
+  }
+}
+
 createServer((req, res) => {
   const url = new URL(req.url, 'http://localhost:' + PORT);
 
@@ -333,6 +386,26 @@ createServer((req, res) => {
       'Access-Control-Allow-Origin': '*',
     });
     res.end(JSON.stringify({ host: getHostInfo(), projects }));
+
+  } else if (url.pathname === '/unclaimed') {
+    sendJson(res, 200, { unclaimed: listUnclaimed() });
+
+  } else if (url.pathname === '/detect') {
+    const p = url.searchParams.get('path');
+    if (!p) { sendJson(res, 400, { error: 'path is required' }); return; }
+    const v = validateAppPath(p);
+    if (!v.ok) { sendJson(res, v.status, { error: v.error }); return; }
+    sendJson(res, 200, detectAppInfo(v.dir));
+
+  } else if (url.pathname === '/add-app' && req.method === 'POST') {
+    let body = '';
+    req.on('data', chunk => body += chunk);
+    req.on('end', () => handleWriteApp(res, body, 'add'));
+
+  } else if (url.pathname === '/update-app' && req.method === 'POST') {
+    let body = '';
+    req.on('data', chunk => body += chunk);
+    req.on('end', () => handleWriteApp(res, body, 'update'));
 
   } else {
     res.writeHead(404);

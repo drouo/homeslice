@@ -9,6 +9,10 @@ Browser  ──►  Caddy (port 80)  ──►  Static files (index.html)
                   │
                   └──►  Helper server (port 3456)
                           ├── /projects     — JSON list of projects
+                          ├── /unclaimed    — dirs under scanRoots with no manifest (auto-detected)
+                          ├── /detect       — auto-detect manifest fields for one path
+                          ├── /add-app      — write a new homeslice.json
+                          ├── /update-app   — merge-update an existing homeslice.json
                           ├── /open-dir     — open folder in Explorer
                           ├── /open-term    — open terminal at project root
                           └── /run          — execute a command in a project
@@ -72,7 +76,25 @@ Browser  ──►  Caddy (port 80)  ──►  Static files (index.html)
 
 ## Adding a project
 
-Create a `homeslice.json` in the project's root directory. Fields:
+The easiest way is straight from the dashboard:
+
+- **Not Yet Added** — a section at the bottom lists every directory under your
+  `scanRoots` that doesn't have a `homeslice.json` yet. Each card is
+  pre-filled with auto-detected values (name, tech, port, GitHub); click **Add**,
+  tweak anything, and **Save**.
+- **+ Add app** — the header button lets you register a directory at an arbitrary
+  path. Type the path, click **Detect** to auto-fill, then **Save**.
+- **Edit** — every project card has an Edit button that opens the same form
+  pre-filled with the current manifest. Saving preserves fields the form doesn't
+  manage (e.g. `commands`, multi-port `ports` arrays).
+
+Auto-detection fills in: name (title-cased from the folder name), tech (from
+`package.json`/`Cargo.toml`/`go.mod`/`pyproject.toml`/`requirements.txt`, with JS
+framework refinement), port (from `package.json` scripts, `.env`, or
+`vite.config.*`), and the GitHub URL (from `.git/config`).
+
+You can still author the manifest by hand — create a `homeslice.json` in the
+project's root directory. Fields:
 
 | Field | Required | Description |
 |-------|----------|-------------|
@@ -95,6 +117,7 @@ Each project card shows:
 | **Term** | Opens a terminal (Windows Terminal or PowerShell) at the project root |
 | **Dir** | Opens the project folder in Windows Explorer |
 | **Cmd** | Toggles a command panel — run presets or custom commands inline |
+| **Edit** | Toggles an inline form to edit the project's `homeslice.json` |
 | **GitHub** | Opens the project's GitHub page |
 
 The status dot (left of the project name) is green when the project's port is responding, red otherwise.
@@ -126,5 +149,6 @@ caddy run --config C:\Apps\caddy\Caddyfile
 - The admin API is disabled in the Caddyfile (`admin off`).
 - The config file (`homeslice.config.json`) is blocked from HTTP access by Caddy.
 - The `/run` endpoint only executes commands in known project directories (validated against the loaded project list).
+- The `/add-app` and `/update-app` endpoints only write a `homeslice.json` into a path that already exists and is a directory (resolved to a real absolute path first). `/update-app` additionally requires an existing manifest and preserves any fields the form doesn't manage.
 - Commands have a 30-second timeout and output is capped at 100 KB.
 - Everything runs on localhost only (`.localhost` domains don't resolve externally).

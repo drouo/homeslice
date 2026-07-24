@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Homeslice</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <style>
   :root {
     --bg: #111;
@@ -207,6 +208,60 @@
   }
   .port-chip:hover { filter: brightness(1.25); }
 
+  /* Add / Edit app */
+  .link-edit { background: #2d4a2d; color: var(--text); cursor: pointer; border: none;
+    font-family: inherit; font-size: 0.8rem; font-weight: 500; padding: 0.35rem 0.75rem;
+    border-radius: 6px; transition: all 0.15s; white-space: nowrap; }
+  .link-edit:hover { background: #3d6a3d; }
+  .link-edit-active { background: #3d6a3d; }
+  .link-add { background: var(--green); color: #000; cursor: pointer; border: none;
+    font-family: inherit; font-size: 0.8rem; font-weight: 600; padding: 0.35rem 0.85rem;
+    border-radius: 6px; transition: filter 0.15s; white-space: nowrap; }
+  .link-add:hover { filter: brightness(1.1); }
+
+  .add-app-btn { background: var(--accent); color: var(--blue); border: 1px solid #1d4a7e;
+    border-radius: 6px; padding: 0.45rem 0.9rem; font-size: 0.85rem; font-weight: 600;
+    cursor: pointer; font-family: inherit; transition: filter 0.15s; white-space: nowrap; }
+  .add-app-btn:hover { filter: brightness(1.25); }
+  .add-app-btn.active { background: var(--green); color: #000; }
+
+  .form-panel { border-top: 1px solid #222; padding-top: 0.75rem; margin-top: 0.25rem; }
+  .form-panel[hidden] { display: none; }
+  #manual-form-container:empty { display: none; }
+  #manual-form-container .app-form {
+    background: var(--card); border: 1px solid #222; border-radius: 8px;
+    padding: 1rem 1.25rem; margin-bottom: 1rem;
+  }
+  .app-form { display: flex; flex-direction: column; gap: 0.5rem; }
+  .form-row { display: flex; align-items: center; gap: 0.6rem; }
+  .form-row label { flex: 0 0 90px; font-size: 0.75rem; color: var(--muted); text-align: right; }
+  .form-row input, .form-row select {
+    flex: 1; min-width: 0; background: #222; color: var(--text);
+    border: 1px solid #333; border-radius: 4px; padding: 0.35rem 0.5rem;
+    font-size: 0.8rem; font-family: inherit;
+  }
+  .form-row input:focus, .form-row select:focus { outline: none; border-color: var(--accent); }
+  .form-detect { background: var(--accent); color: var(--blue); border: none; border-radius: 4px;
+    padding: 0.35rem 0.7rem; font-size: 0.78rem; font-weight: 500; cursor: pointer; white-space: nowrap; }
+  .form-detect:hover { filter: brightness(1.2); }
+  .form-note { font-size: 0.75rem; color: var(--muted); font-style: italic;
+    padding: 0.25rem 0 0.25rem 96px; }
+  .form-actions { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.35rem;
+    padding-left: 96px; flex-wrap: wrap; }
+  .form-save { background: var(--green); color: #000; border: none; border-radius: 4px;
+    padding: 0.35rem 0.9rem; font-size: 0.8rem; font-weight: 600; cursor: pointer; }
+  .form-save:hover { filter: brightness(1.1); }
+  .form-save:disabled { opacity: 0.5; cursor: not-allowed; }
+  .form-cancel { background: #222; color: var(--text); border: none; border-radius: 4px;
+    padding: 0.35rem 0.9rem; font-size: 0.8rem; font-weight: 500; cursor: pointer; }
+  .form-cancel:hover { background: #333; }
+  .form-error { font-size: 0.78rem; color: #e74c3c; }
+
+  .project.unclaimed { opacity: 0.72; border-style: dashed; }
+  .project.unclaimed:hover { opacity: 1; border-color: var(--green); }
+  .badge-unclaimed { background: #5e4a1e !important; color: #f0c674 !important; }
+  .desc.mono { font-family: monospace; font-size: 0.72rem; word-break: break-all; }
+
   footer {
     margin-top: 3rem;
     text-align: center;
@@ -231,10 +286,15 @@
 </head>
 <body>
 <div class="container">
-  <header>
-    <h1>Homeslice</h1>
-    <p>Local development projects</p>
+  <header style="display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;">
+    <div>
+      <h1>Homeslice</h1>
+      <p>Local development projects</p>
+    </div>
+    <button id="add-app-btn" class="add-app-btn" onclick="toggleManualForm()">+ Add app</button>
   </header>
+
+  <div id="manual-form-container"></div>
 
   <div id="projects"><div class="section-title">Loading…</div></div>
 
@@ -264,6 +324,149 @@ function slug(name) {
   return name.toLowerCase().replace(/\s+/g, '-');
 }
 
+function htmlEscape(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+// Shared inline add/edit form. prefix gives every field a unique id; mode is
+// 'add' | 'edit'; opts.pathInput adds a Directory field + Detect (manual flow).
+function appFormHtml(prefix, data, mode, opts) {
+  opts = opts || {};
+  const d = data || {};
+  const val = (v) => htmlEscape(v == null ? '' : v);
+  const hasMultiPort = Array.isArray(d.ports) && d.ports.length > 1;
+  const sectionOpt = (v, label) =>
+    '<option value="' + v + '"' + ((d.section || 'web') === v ? ' selected' : '') + '>' + label + '</option>';
+
+  let pathRow;
+  if (opts.pathInput) {
+    pathRow = '<div class="form-row"><label>Directory</label>' +
+      '<input type="text" id="' + prefix + '-dir" placeholder="C:\\Apps\\my-app" spellcheck="false" value="' + val(d.dir) + '">' +
+      '<button type="button" class="form-detect" onclick="detectPath(\'' + prefix + '\')">Detect</button></div>';
+  } else {
+    pathRow = '<input type="hidden" id="' + prefix + '-dir" value="' + val(d.dir) + '">';
+  }
+
+  const portRow = hasMultiPort
+    ? '<div class="form-note">This app uses a multi-port config — edit homeslice.json directly to change ports.</div>'
+    : '<div class="form-row"><label>Port</label><input type="number" id="' + prefix + '-port" placeholder="e.g. 5173" value="' + val(d.port) + '"></div>';
+
+  return '<div class="app-form" id="' + prefix + '-form">' +
+    pathRow +
+    '<div class="form-row"><label>Name *</label><input type="text" id="' + prefix + '-name" spellcheck="false" value="' + val(d.name) + '"></div>' +
+    '<div class="form-row"><label>Description</label><input type="text" id="' + prefix + '-description" value="' + val(d.description) + '"></div>' +
+    '<div class="form-row"><label>Tech</label><input type="text" id="' + prefix + '-tech" spellcheck="false" value="' + val(d.tech) + '"></div>' +
+    '<div class="form-row"><label>Section</label><select id="' + prefix + '-section">' +
+      sectionOpt('web', 'Web App') + sectionOpt('desktop', 'Desktop App') + sectionOpt('docs', 'Docs & Planning') +
+    '</select></div>' +
+    '<div class="form-row"><label>URL</label><input type="text" id="' + prefix + '-url" spellcheck="false" value="' + val(d.url) + '"></div>' +
+    portRow +
+    '<div class="form-row"><label>GitHub</label><input type="text" id="' + prefix + '-github" spellcheck="false" value="' + val(d.github) + '"></div>' +
+    '<div class="form-actions">' +
+      '<button type="button" class="form-save" id="' + prefix + '-save" onclick="saveApp(\'' + prefix + '\',\'' + mode + '\',' + hasMultiPort + ')">Save</button>' +
+      '<button type="button" class="form-cancel" onclick="cancelForm(\'' + prefix + '\')">Cancel</button>' +
+      '<span class="form-error" id="' + prefix + '-error"></span>' +
+    '</div>' +
+  '</div>';
+}
+
+function fillForm(prefix, d) {
+  const set = (f, v) => { const el = document.getElementById(prefix + '-' + f); if (el) el.value = v == null ? '' : v; };
+  set('name', d.name); set('description', d.description); set('tech', d.tech);
+  set('url', d.url); set('port', d.port); set('github', d.github);
+  const sec = document.getElementById(prefix + '-section');
+  if (sec && d.section) sec.value = d.section;
+}
+
+function detectPath(prefix) {
+  const dirEl = document.getElementById(prefix + '-dir');
+  const errEl = document.getElementById(prefix + '-error');
+  errEl.textContent = '';
+  const dir = dirEl.value.trim();
+  if (!dir) { errEl.textContent = 'Enter a directory path first.'; return; }
+  fetch('/detect?path=' + encodeURIComponent(dir))
+    .then(r => r.json().then(j => ({ ok: r.ok, j })))
+    .then(({ ok, j }) => {
+      if (!ok) { errEl.textContent = j.error || 'Detection failed.'; return; }
+      fillForm(prefix, j);
+    })
+    .catch(err => { errEl.textContent = 'Network error: ' + err.message; });
+}
+
+function saveApp(prefix, mode, hasMultiPort) {
+  const get = (f) => { const el = document.getElementById(prefix + '-' + f); return el ? el.value : ''; };
+  const errEl = document.getElementById(prefix + '-error');
+  const saveBtn = document.getElementById(prefix + '-save');
+  errEl.textContent = '';
+  const dir = get('dir').trim();
+  const name = get('name').trim();
+  if (!dir) { errEl.textContent = 'Directory is required.'; return; }
+  if (!name) { errEl.textContent = 'Name is required.'; return; }
+  const body = {
+    dir, name,
+    description: get('description'),
+    tech: get('tech'),
+    section: get('section'),
+    url: get('url'),
+    github: get('github'),
+  };
+  if (!hasMultiPort) body.port = get('port');
+
+  if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Saving…'; }
+  fetch(mode === 'edit' ? '/update-app' : '/add-app', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+    .then(r => r.json().then(j => ({ ok: r.ok, j })))
+    .then(({ ok, j }) => {
+      if (!ok) {
+        errEl.textContent = j.error || 'Save failed.';
+        if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save'; }
+        return;
+      }
+      init(); // re-render dashboard; card now lives in its real section
+    })
+    .catch(err => {
+      errEl.textContent = 'Network error: ' + err.message;
+      if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save'; }
+    });
+}
+
+function cancelForm(prefix) {
+  if (prefix === 'manual') {
+    document.getElementById('manual-form-container').innerHTML = '';
+    document.getElementById('add-app-btn').classList.remove('active');
+    return;
+  }
+  const form = document.getElementById(prefix + '-form');
+  const panel = form && form.closest('.form-panel');
+  if (panel) panel.setAttribute('hidden', '');
+}
+
+function togglePanel(id) {
+  const panel = document.getElementById(id);
+  if (!panel) return;
+  if (panel.hasAttribute('hidden')) panel.removeAttribute('hidden');
+  else panel.setAttribute('hidden', '');
+}
+
+function toggleManualForm() {
+  const container = document.getElementById('manual-form-container');
+  const btn = document.getElementById('add-app-btn');
+  if (container.innerHTML) {
+    container.innerHTML = '';
+    btn.classList.remove('active');
+  } else {
+    container.innerHTML = appFormHtml('manual', { section: 'web' }, 'add', { pathInput: true });
+    btn.classList.add('active');
+    const dirEl = document.getElementById('manual-dir');
+    if (dirEl) dirEl.focus();
+  }
+}
+
 function openDir(path) {
   new Image().src = '/open-dir?path=' + encodeURIComponent(path);
 }
@@ -281,6 +484,13 @@ function toggleCmd(slug) {
   } else {
     panel.setAttribute('hidden', '');
     btn.classList.remove('link-cmd-active');
+  }
+}
+
+function onPresetChange(slug) {
+  const select = document.getElementById('cmd-preset-' + slug);
+  if (select.value !== '') {
+    document.getElementById('cmd-input-' + slug).value = '';
   }
 }
 
@@ -357,9 +567,18 @@ function renderCard(p, host) {
   const dirHtml   = '<button class="link-dir" onclick="openDir(\'' + dirEscaped + '\')">Dir</button>';
   const termHtml  = '<button class="link-term" onclick="openTerm(\'' + dirEscaped + '\')">Term</button>';
   const cmdBtn    = '<button class="link-cmd" id="cmd-btn-' + s + '" onclick="toggleCmd(\'' + s + '\')">Cmd</button>';
+  const editBtn   = '<button class="link-edit" id="edit-btn-' + s + '" onclick="togglePanel(\'edit-panel-' + s + '\')">Edit</button>';
   const ghHtml    = p.github
     ? '<a href="' + p.github + '" class="link-gh" target="_blank">GitHub</a>'
     : '';
+
+  const editData = {
+    dir: p.dir, name: p.name, description: p.description, tech: p.tech,
+    section: p.section || 'web', url: p.url, port: p.port, github: p.github,
+    ports: p.ports,
+  };
+  const editPanel = '<div class="form-panel" id="edit-panel-' + s + '" hidden>' +
+    appFormHtml('edit-' + s, editData, 'edit', {}) + '</div>';
 
   const allPresets = p.commands && p.commands.length
     ? CMD_PRESETS.slice(0, -1).concat(p.commands).concat(CMD_PRESETS.slice(-1))
@@ -371,7 +590,7 @@ function renderCard(p, host) {
 
   const cmdPanel = '<div class="cmd-panel" id="cmd-panel-' + s + '" hidden>' +
     '<div class="cmd-row">' +
-      '<select id="cmd-preset-' + s + '">' + presetsHtml + '</select>' +
+      '<select id="cmd-preset-' + s + '" onchange="onPresetChange(\'' + s + '\')">' + presetsHtml + '</select>' +
       '<input type="text" id="cmd-input-' + s + '" placeholder="Custom command..." spellcheck="false">' +
       '<button id="cmd-run-' + s + '" onclick="runCmd(\'' + s + '\',\'' + dirEscaped + '\')">Run</button>' +
     '</div>' +
@@ -385,13 +604,29 @@ function renderCard(p, host) {
         descHtml +
         hostRowHtml +
       '</div>' +
-      '<div class="links">' + openHtml + termHtml + dirHtml + cmdBtn + ghHtml + '</div>' +
+      '<div class="links">' + openHtml + termHtml + dirHtml + cmdBtn + editBtn + ghHtml + '</div>' +
     '</div>' +
     cmdPanel +
+    editPanel +
   '</div>';
 }
 
-function renderProjects(projects, host) {
+// Dimmed card for a directory with no homeslice.json yet, plus its inline Add form.
+function renderUnclaimedCard(d, idx) {
+  const techBadge = d.tech ? ' <span class="badge">' + htmlEscape(d.tech) + '</span>' : '';
+  return '<div class="project unclaimed">' +
+    '<div class="top-row">' +
+      '<div class="info">' +
+        '<div class="name">' + htmlEscape(d.name) + ' <span class="badge badge-unclaimed">unclaimed</span>' + techBadge + '</div>' +
+        '<div class="desc mono">' + htmlEscape(d.dir) + '</div>' +
+      '</div>' +
+      '<div class="links"><button class="link-add" onclick="togglePanel(\'add-panel-' + idx + '\')">Add</button></div>' +
+    '</div>' +
+    '<div class="form-panel" id="add-panel-' + idx + '" hidden>' + appFormHtml('add-' + idx, d, 'add', {}) + '</div>' +
+  '</div>';
+}
+
+function renderProjects(projects, host, unclaimed) {
   const container = document.getElementById('projects');
   const sections = {};
   for (const p of projects) {
@@ -405,7 +640,13 @@ function renderProjects(projects, host) {
     html += '<div class="section-title">' + (SECTION_LABELS[key] || key) + '</div>';
     html += sections[key].map(function (p) { return renderCard(p, host); }).join('');
   }
-  container.innerHTML = html || '<div class="section-title">No projects found</div>';
+  if (!html) html = '<div class="section-title">No projects found</div>';
+
+  if (unclaimed && unclaimed.length) {
+    html += '<div class="section-title">Not Yet Added (' + unclaimed.length + ')</div>';
+    html += unclaimed.map(function (d, i) { return renderUnclaimedCard(d, i); }).join('');
+  }
+  container.innerHTML = html;
 }
 
 function checkServices(projects) {
@@ -422,18 +663,27 @@ function checkServices(projects) {
 
 let _projects = [];
 let _host = null;
+let _unclaimed = [];
+let _servicesTimer = null;
 
 async function init() {
   const container = document.getElementById('projects');
   try {
-    const res = await fetch('/projects');
+    const [res, uRes] = await Promise.all([
+      fetch('/projects'),
+      fetch('/unclaimed').catch(function () { return null; }),
+    ]);
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
     _host = data.host;
     _projects = data.projects;
-    renderProjects(_projects, _host);
+    _unclaimed = [];
+    if (uRes && uRes.ok) {
+      try { _unclaimed = (await uRes.json()).unclaimed || []; } catch {}
+    }
+    renderProjects(_projects, _host, _unclaimed);
     checkServices(_projects);
-    setInterval(function () { checkServices(_projects); }, 30000);
+    if (!_servicesTimer) _servicesTimer = setInterval(function () { checkServices(_projects); }, 30000);
   } catch (err) {
     container.innerHTML = '<div class="project"><div class="top-row"><div class="info">' +
       '<div class="name">Could not load projects</div>' +
